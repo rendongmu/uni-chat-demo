@@ -1,0 +1,166 @@
+<template>
+    <view class="uni-container">
+        <view class="uni-hello-text">
+            <text class="hello-text">野火IM 最简的uni-app demo，演示uni-app如何集成野火IM：</text>
+        </view>
+		<view class="uni-form-item uni-column">
+		    <view class="title"><text class="uni-form-item__title">请输入手机号</text></view>
+		    <view class="uni-input-wrapper">
+		        <input class="uni-input" type="number" placeholder="请输入手机号" v-model="phone"/>
+		    </view>
+		</view>
+		<view class="uni-form-item uni-column" >
+		    <view class="title"><text class="uni-form-item__title" >请输入验证码</text></view>
+		    <view class="uni-input-wrapper">
+		        <input class="uni-input" type="number" placeholder="请输入验证码" v-model="code" />
+		    </view>
+		</view>
+		<button type="default" plain="true" @click="login">登录</button>
+		
+		
+		<view class="uni-form-item uni-column" >
+		    <view class="title"><text class="uni-form-item__title">请输入发送给Robot的消息</text></view>
+		    <view class="uni-input-wrapper">
+		        <input class="uni-input" type="text" placeholder="请输入" v-model="messageToSend" />
+		    </view>
+			<button type="default" plain="true" @click="sendMessageToFireRobot">发送</button>
+			
+		</view>
+		<view class="uni-form-item uni-column" >
+			<view class="title">
+				<text class="uni-form-item__title">来自Robot的最新消息:</text>
+			</view>
+			<view class="title">
+				<text class="uni-form-item__content">{{lastMessageFromRobot}}</text>
+			</view>
+		</view>
+      
+    </view>
+</template>
+<script>
+	import wfc from '../../../wfc/client/wfc.js';
+	import EventType from '../../../wfc/client/wfcEvent.js'
+	import Config from '../../../config.js'
+	import Conversation from '../../../wfc/model/conversation.js'
+	import ConversationType from '../../../wfc/model/conversationType.js'
+	import TextMessageContent from '../../../wfc/messages/textMessageContent.js'
+    // TODO 修复Android v3 加载过慢问题
+    // #ifdef APP-PLUS
+    var domModule = weex.requireModule('dom');
+    domModule.addRule('fontFace', {
+        'fontFamily': "uniicons",
+        'src': "url('/static/uni.ttf')"
+    });
+    // #endif
+
+    export default {
+        data() {
+            return {
+				phone: '',
+				code: '',
+				lastMessageFromRobot: '',
+				messageToSend: null,
+            }
+        },
+		onLoad() {
+			wfc.eventEmitter.on(EventType.ConnectionStatusChanged, (status) => console.log('connection status changed', status))
+			wfc.eventEmitter.on(EventType.ReceiveMessage, this.onReceiveMessage);
+
+		},
+        onShareAppMessage() {
+            return {
+                title: '欢迎体验uni-app',
+                path: '/pages/tabBar/component/component'
+            }
+        },
+        onNavigationBarButtonTap(e) {
+            uni.navigateTo({
+                url: '/pages/about/about'
+            });
+        },
+        methods: {
+			login(e){
+			    let appServer = Config.APP_SERVER + '/login'
+			    let clientId = wfc.getClientId('wx')
+			    uni.request({
+			      url: appServer,
+			      data: {
+			        mobile: this.phone,
+			        code: this.code,
+			        clientId: clientId
+			      },
+			      header: {
+			        'content-type': 'application/json', // 默认值
+			      },
+			      method: 'POST',
+			      success(res) {
+			        console.log(res.data)
+			        if (res.statusCode === 200) {
+			          let loginResult = res.data;
+			          if (loginResult.code === 0) {
+			            let userId = loginResult.result.userId;
+			            let token = loginResult.result.token;
+			            wfc.connect(userId, token, 'uni');
+			            uni.setStorage({
+			              key:"userId",
+			              data:userId
+			            })
+			            uni.setStorage({
+			              key:"token",
+			              data:token
+			            })
+						console.log('login success')
+
+			          } else {
+			            console.log('login failed', loginResult);
+			          }
+			        }
+			      }
+			    })
+			  },
+			
+			  authCode(phone) {
+			    let appServer = Config.APP_SERVER + '/send_code'
+			    wx.request({
+			      url: appServer,
+			      data: {
+			        mobile: phone
+			      },
+			      header: {
+			        'content-type': 'application/json', // 默认值
+			      },
+			      method: 'POST',
+			      success(res) {
+			        console.log(res.data)
+			        if (res.statusCode === 200) {
+			          console.log('发送验证码成功');
+			        }
+			      }
+			    })
+			
+			  },
+			  
+			      onReceiveMessage(message) {
+			        console.log('receive msg', message);
+			        if (message.from === 'FireRobot') {
+			          this.lastMessageFromRobot = message.messageContent.digest();
+			        }
+			      },
+			  
+		    sendMessageToFireRobot() {
+		      if (!this.messageToSend) {
+		        console.log('not nothing...')
+		        return;
+		      }
+		      let conversation = new Conversation(ConversationType.Single, 'FireRobot', 0);
+		      let textMessageContent = new TextMessageContent(this.messageToSend);
+		      wfc.sendConversationMessage(conversation, textMessageContent);
+		      this.messageToSend = null;
+		    }
+        }
+    }
+</script>
+
+<style>
+    @import '../../../common/uni-nvue.css';
+</style>
